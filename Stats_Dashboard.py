@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from binance.client import Client
 from config import *
 
@@ -32,6 +32,15 @@ current_balance = initial_balance + df['profit_usdt'].sum()
 
 # Header
 st.title("📈 BTC Futures Trading Dashboard")
+
+# Đếm ngược đến lệnh tiếp theo (theo giây để test nến 1 phút)
+now = datetime.now()
+next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+time_left = next_minute - now
+
+with st.expander("⏳ Đếm ngược đến thời điểm vào lệnh test (1 phút)"):
+    st.metric("⏱️ Còn lại", f"{time_left.seconds} giây")
+    st.info("👉 Khi còn 0 giây, bot sẽ vào lệnh (nếu bạn chạy bằng cron mỗi phút để test)")
 
 # KPI tổng quan
 col1, col2, col3, col4 = st.columns(4)

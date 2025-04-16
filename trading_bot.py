@@ -119,9 +119,10 @@ def place_order(symbol, side, quantity, entry_price):
 # === CHẠY BOT ===
 def execute_trade():
     now = datetime.now()
-    if now.minute != 0 or now.second != 0:
-        print("🕐 Không phải thời điểm đóng nến 1H. Đợi đến đúng HH:00 mới vào lệnh.")
+    if now.second != 0:
+        print("🕐 Không phải đầu phút. Đợi đến đúng giây 00 mới vào lệnh test.")
         return
+
 
     ensure_hedge_mode()
     client.futures_change_leverage(symbol=SYMBOL, leverage=LEVERAGE)
