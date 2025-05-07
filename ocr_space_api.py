@@ -4,22 +4,22 @@ import re
 import time
 from telethon import TelegramClient, sync
 
-# === Telegram Bot để gửi kết quả về chat cá nhân ===
 api_id = 27880664
 api_hash = 'aee3ae5d6b0e8f6740b238e4e6a40885'
-receiver_user_id = -4605282548  # 👈 ID Telegram user bạn muốn gửi kết quả về
-tele_client = TelegramClient('notifier', api_id, api_hash)
+receiver_user_id = -4605282548
+tele_client = TelegramClient('notifier_ocr', api_id, api_hash)
 tele_client.start()
 
-# === OCR xử lý ===
-def ocr_space_file(filename, api_key='helloworld', language='eng'):
+def ocr_space_file(filename, api_key='K83332761288957', language='eng'):
     with open(filename, 'rb') as f:
         r = requests.post('https://api.ocr.space/parse/image',
                           files={filename: f},
                           data={
                               'apikey': api_key,
                               'language': language,
-                              'isOverlayRequired': False
+                              'isOverlayRequired': False,
+                              'scale': True,
+                              'OCREngine': 2
                           })
     result = r.json()
     parsed = result.get('ParsedResults')
@@ -27,23 +27,32 @@ def ocr_space_file(filename, api_key='helloworld', language='eng'):
         return parsed[0]['ParsedText']
     return ""
 
-folder = 'images'
+folder = 'MyImages'
 processed = set()
+
+def is_file_ready(fpath):
+    try:
+        with open(fpath, 'rb'):
+            return True
+    except:
+        return False
 
 def monitor_folder():
     while True:
         files = [f for f in os.listdir(folder) if f.endswith('.jpg')]
         for fname in files:
             fpath = os.path.join(folder, fname)
-            if fpath in processed:
+            if fpath in processed or not is_file_ready(fpath):
                 continue
             try:
+                time.sleep(0.3)
                 print(f"🔍 Đang xử lý ảnh: {fname}")
                 text = ocr_space_file(fpath)
+                print("📄 OCR text:", text)
+
                 if not text.strip():
-                    warn = f"⚠️ OCR không đọc được nội dung từ ảnh: {fname}"
-                    print(warn)
-                    tele_client.send_message(receiver_user_id, warn)
+                    print(f"⚠️ Không đọc được nội dung, xoá ảnh: {fname}")
+                    time.sleep(0.3)
                     os.remove(fpath)
                     continue
 
@@ -59,39 +68,68 @@ def monitor_folder():
                         if sym_match:
                             signal["symbol"] = sym_match[0]
                     if "SL" in line and signal["sl"] is None:
-                        signal["sl"] = re.findall(r"\d+\.?\d*", line)[-1]
+                        sl_match = re.findall(r"\d+\.?\d*", line)
+                        if sl_match:
+                            signal["sl"] = sl_match[-1]
                     if "TP" in line and signal["tp"] is None:
-                        match = re.findall(r"\d+\.?\d*", line)
-                        if match:
-                            signal["tp"] = match[0]
-                    if signal["entry"] is None and any(char.isdigit() for char in line) and "SL" not in line and "TP" not in line:
-                        match = re.findall(r"\d+\.?\d*(?:[-–]\d+\.?\d*)?", line)
-                        if match:
-                            signal["entry"] = match[0]
+                        tp_match = re.findall(r"\d+\.?\d*", line)
+                        if tp_match:
+                            signal["tp"] = tp_match[0]
+                    if signal["entry"] is None:
+                        entry_match = re.findall(r"\d+\.?\d*\s*[-–]\s*\d+\.?\d*", line)
+                        if entry_match:
+                            signal["entry"] = entry_match[0].replace(" ", "")
 
-                print("📊 Tín hiệu:", signal)
-                receiver_url = "http://localhost:5000/api/receive-signal"
-                res = requests.get(receiver_url, params=signal)
-                print(f"📡 Gửi API: {res.status_code} - {res.text}")
+                entries = []
+                if signal["entry"]:
+                    if "-" in signal["entry"]:
+                        entries = signal["entry"].split("-")
+                    else:
+                        entries = [signal["entry"]]
 
-                # Gửi thông báo về Telegram nếu thành công
-                msg = (
-                    f"📤 Đã gửi tín hiệu:\n"
-                    f"Loại: {signal['type']}\n"
-                    f"Symbol: {signal['symbol']}\n"
-                    f"Entry: {signal['entry']}\n"
-                    f"SL: {signal['sl']}\n"
-                    f"TP: {signal['tp']}"
-                )
-                tele_client.send_message(receiver_user_id, msg)
+                if entries:
+                    for entry in entries:
+                        signal_copy = signal.copy()
+                        signal_copy["entry"] = entry.strip()
+                        print("📊 Tín hiệu:", signal_copy)
 
-                os.remove(fpath)
-                print(f"🗑️ Đã xoá ảnh: {fname}")
+                        # Gửi API
+                        try:
+                            receiver_url = "http://localhost:5000/api/receive-signal"
+                            res = requests.get(receiver_url, params=signal_copy)
+                            print(f"📡 Gửi API: {res.status_code} - {res.text}")
+                        except Exception as e:
+                            print(f"❌ Lỗi khi gửi API: {e}")
+
+                        # Gửi về Telegram
+                        try:
+                            msg = (
+                                f"📤 Đã gửi tín hiệu:\n"
+                                f"Loại: {signal_copy['type']}\n"
+                                f"Symbol: {signal_copy['symbol']}\n"
+                                f"Entry: {signal_copy['entry']}\n"
+                                f"SL: {signal_copy['sl']}\n"
+                                f"TP: {signal_copy['tp']}"
+                            )
+                            tele_client.send_message(receiver_user_id, msg)
+                        except Exception as e:
+                            print(f"❌ Lỗi gửi Telegram: {e}")
+
+                    time.sleep(0.3)
+                    os.remove(fpath)
+                    print(f"🗑️ Đã xoá ảnh: {fname}")
+                else:
+                    print(f"⚠️ Không tách được entry. Xoá ảnh: {fname}")
+                    os.remove(fpath)
+
                 processed.add(fpath)
+
             except Exception as e:
-                err = f"❌ Lỗi xử lý ảnh {fname}: {e}"
-                print(err)
-                tele_client.send_message(receiver_user_id, err)
-                
+                print(f"❌ Lỗi xử lý ảnh {fname}: {e}")
+                if "WinError 32" in str(e):
+                    print("⏳ File đang bị khoá, sẽ thử lại sau.")
+
+        time.sleep(1)
+
 if __name__ == '__main__':
     monitor_folder()
