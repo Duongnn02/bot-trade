@@ -10,6 +10,7 @@ api_key = 'K83332761288957'
 
 TELEGRAM_BOT_TOKEN = '7860007397:AAHaqVQWFhtoTBn3OYeEfxGegrGo5isp4bE'
 TELEGRAM_CHAT_ID = -1002665715802  # Ví dụ: nhóm private, nhớ là số âm với nhóm
+API_ENDPOINT = 'http://156.67.220.147:3000/api/accounts-mt4/auto-trade'  # ⚠️ Đổi thành API bạn muốn gửi tới
 
 # OCR
 def ocr_space_file(filepath):
@@ -85,15 +86,17 @@ def process_image(filepath):
 
     entries = signal["entry"].split("-") if "-" in signal["entry"] else [signal["entry"]]
     for entry in entries:
+        symbol = "XAUUSD" if signal["symbol"] in ["GOLD", "XAU"] else signal["symbol"]
         data = {
             "Type": signal["type"],
-            "Symbol": signal["symbol"],
+            "Symbol": symbol,
             "Entry": entry.strip(),
             "SL": signal["sl"],
             "TP": signal["tp"][0]  # hoặc dùng signal["tp"] nếu bạn muốn gửi nhiều TP
         }
         print("📊 Tín hiệu:", data)
         send_to_telegram(data)
+        send_to_api(data)         # ← Gửi đến API
 
     os.remove(filepath)
     print("🗑️ Đã xoá ảnh sau xử lý.")
@@ -127,6 +130,28 @@ def send_to_telegram(signal):
             print(f"❌ Lỗi gửi Telegram: {r.text}")
     except Exception as e:
         print(f"❌ Exception gửi Telegram: {e}")
+
+def send_to_api(signal):
+    try:
+        payload = {
+            "type": signal["Type"],
+            "symbol": signal["Symbol"],
+            "entry": signal["Entry"],
+            "sl": signal["SL"],
+            "tp": signal["TP"]
+        }
+        res = requests.post(API_ENDPOINT, json=payload)
+        if res.status_code == 200:
+            print("📡 Đã gửi dữ liệu đến API.")
+        else:
+            print(f"❌ Lỗi API: {res.status_code} - {res.text}")
+            try:
+                err = res.json()
+                print("📛 Lỗi chi tiết:", err['results'][0]['result']['error'])
+            except:
+                pass
+    except Exception as e:
+        print(f"❌ Exception khi gửi API: {e}")
 
 if __name__ == '__main__':
     print(f"🚀 Đang theo dõi thư mục: {folder}")
